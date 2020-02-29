@@ -42,9 +42,26 @@ sealed trait LStream[+A] { self =>
       case LCons(hf, tf) if p(hf()) => LCons(hf, () => tf().takeWhile(p))
       case LCons(hf, _) if !p(hf()) => Empty
     }
+
+  def exists(p : A => Boolean): Boolean = self match {
+    case LCons(hf, tf) => p(hf()) || tf().exists(p)
+    case _ => false
+  }
+
+  def forall(p : A => Boolean) :Boolean = self match {
+      case LCons(hf, tf) => p(hf()) && tf().forall(p)
+      case _ => true
+    }
+
+  def foldRight[B](z: => B)(f: (A, => B) => B): B = self match {
+      case LCons(h,t) => f(h(), t().foldRight(z)(f))
+      case _ => z
+    }
+
+  def takeWhileWthFoldRight(p : A => Boolean) : LStream[A] = self.foldRight(LStream.empty[A]) ( (a, b) => {
+    if(p(a)) LStream.cons(a, Empty) else b
+  })
 }
-
-
 
 case object Empty extends LStream[Nothing]
 case class LCons[+A](h: () => A, t: () => LStream[A]) extends LStream[A]
@@ -60,4 +77,10 @@ object LStream {
 
   def apply[A](as: A*): LStream[A] =
     if (as.isEmpty) empty else cons(as.head, apply(as.tail: _*))
+
+  def main(args: Array[String]): Unit = {
+    val lst = LStream(1,2,18,4,5)
+    val r = lst.takeWhile(_ < 19).toList
+    println(r)
+  }
 }

@@ -3,26 +3,26 @@ package datastructures
 sealed trait Maybe[+A] { self =>
   def map[B](f : A => B) : Maybe[B] = self match {
     case Just(x) => Just(f(x))
-    case None => None
+    case None2 => None2
   }
 
   def flatMap[B](f: A => Maybe[B]): Maybe[B] =
-    map(f) getOrElse(None)
+    map(f) getOrElse(None2)
 
   def getOrElse[B >: A](default: => B): B = self match {
     case Just(x) => x
-    case None => default
+    case None2 => default
   }
 
   def orElse[B >: A](ob: => Maybe[B]): Maybe[B] =
     map(a => Just(a)) getOrElse ob
 
   def filter(f: A => Boolean): Maybe[A] =
-    flatMap(a => if (f(a)) Just(a) else None)
+    flatMap(a => if (f(a)) Just(a) else None2)
 }
 
 final case class Just[+T](get : T) extends Maybe[T]
-case object None extends Maybe[Nothing]
+case object None2 extends Maybe[Nothing]
 
 object Maybe {
   def lift[A,B](f: A => B): Maybe[A] => Maybe[B] = _ map f
@@ -33,7 +33,7 @@ object Maybe {
   def sequence[A](as: FList[Maybe[A]]): Maybe[FList[A]] = {
     Just(FList.foldRight(as, Nil : FList[A])((a, b) => {
       a match {
-        case None => return None
+        case None2 => return None2
         case Just(x) => Cons(x, b)
       }
     }))
@@ -42,7 +42,7 @@ object Maybe {
   def traverse[A, B](a: FList[A])(f: A => Maybe[B]): Maybe[FList[B]] =
     Just(FList.foldRight(a, Nil : FList[B]) ((x, y) => {
       f(x) match {
-        case None => return None
+        case None2 => return None2
         case Just(z) => Cons(z, y)
       }
     }))

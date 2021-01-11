@@ -15,76 +15,83 @@ case class SimpleRNG(seed : Long) extends RNG {
   }
 }
 
-object RNG {
-  def map[A, B](s : Rand[A])(f : A => B) : Rand[B] = {
-    rng => {
-      val (a, rng2) = s(rng)
-      (f(a), rng2)
-    }
-  }
+import State._
+case class State[S, +A](run : S => (A, S)) {
 
-  def map2[A, B, C](ra : Rand[A])(rb : Rand[B])(f : (A, B) => C) : Rand[C] = {
-    rng => {
-      val (a, rng2) = ra(rng)
-      val (b, rng3) = rb(rng2)
-      (f(a, b), rng3)
-    }
-  }
+  def map[B](f : A => B) : State[S, B] =
+    flatMap(a => unit(f(a)))
 
-  def both[A, B](ra : Rand[A], rb : Rand[B]) : Rand[(A, B)] =
-    map2(ra)(rb)((_, _))
+  def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
+    flatMap(a => sb.map(b => f(a, b)))
 
-  def sequence[A](fs : List[Rand[A]]) : Rand[List[A]] = {
-    rng => {
-      fs.foldLeft((List.empty[A], rng)) ( (a, b) => {
-        val (a1, nrng) = b(a._2)
-        (a._1 :+ a1, nrng)
+  def flatMap[B](f: A => State[S, B]): State[S, B] =
+    State(s => {
+      val (a, s2) = run(s)
+      f(a).run(s2)
+    })
+
+  def get : State[S, S] = State(s => (s, s))
+
+  def set(s : S) : State[S, Unit] = State(_ => ((), s))
+
+  def modify(f : S => S) : State[S, Unit] = for {
+    s <- get
+    _ <- set(f(s))
+  } yield ()
+}
+
+object State {
+  def unit[S, A](a: A) : State[S, A] =
+    State(s => (a, s))
+
+  def sequence[S, A](fs : List[State[S, A]]) : State[S, List[A]] =
+    State(s => {
+      fs.foldLeft((List.empty[A], s)) ((a, b) => {
+        val (ap, sp) = b.run(a._2)
+        (a._1 :+ ap, sp)
       })
-    }
+    })
+}
+
+object RNG {
+  def int : Rand[Int] =
+    State(rng => rng.nextInt)
+
+  def nonNegativeInt : Rand[Int] =
+    int.flatMap(i => State(rng => {
+      if(i == Int.MinValue)
+        (Int.MaxValue, rng)
+      else
+        (math.abs(i), rng)
+    }))
+
+  def nonNegativeLessThan(n : Int) : Rand[Int] =
+    nonNegativeInt.flatMap(i => {
+      val mod = i % n
+      if(i + (n - 1) - mod >= 0)
+        State.unit(mod)
+      else
+        nonNegativeLessThan(n)
+    })
+
+  def ints(count : Int) : Rand[List[Int]] = {
+    val lst = List.fill(count)(State((rng : RNG) => rng.nextInt))
+    State.sequence(lst)
   }
 
-  def flatMap[A, B](f : Rand[A])(g : A => Rand[B]) : Rand[B] = ???
-
-  def int(rng : RNG) : (Int, RNG) =
-    rng.nextInt
-
-  def double(rng : RNG) : (Double, RNG) =
-    map(_.nextInt)(x => math.abs(x.toDouble) / Int.MaxValue)(rng)
-
-  def intDouble(rng : RNG) : ((Int, Double), RNG) = {
-    val (i, rng2) = rng.nextInt
-    val (d, rng3) = double(rng2)
-    ((i, d), rng3)
-  }
-
-  def ints(count : Int)(rng : RNG) : (List[Int], RNG) = {
-    val lst = List.fill(count)(1)
-    val l2 : List[Rand[Int]] = lst.map(x => _.nextInt)
-
-    sequence(l2)(rng)
-  }
-
-  def nonNegativeInt(rng : RNG) : (Int, RNG) = {
-    val (i , rng2) = rng.nextInt
-    if(i == Int.MinValue)
-      (Int.MaxValue, rng2)
-    else (math.abs(i), rng2)
-  }
-
-
-  def nonNegativeLessThan(n : Int) : Rand[Int] = { rng =>
-    val (i, rng2) = nonNegativeInt(rng)
-    val mod = i % n
-    if (i + (n - 1)  - mod >= 0)
-      (mod , rng2)
-    else nonNegativeLessThan(n)(rng)
+  def nonNegativeIntsLessThan(count : Int, n : Int) : Rand[List[Int]] = {
+    val lst = List.fill(count)(nonNegativeLessThan(n))
+    State.sequence(lst)
   }
 
   def main(args: Array[String]): Unit = {
     val rng = SimpleRNG(42)
-
-    println(nonNegativeLessThan(70)(rng))
-
-
+    val ns : Rand[List[Int]] =
+      for {
+        x <- nonNegativeLessThan(9)
+        y <- nonNegativeLessThan(11)
+        xs <- nonNegativeIntsLessThan(x, y)
+      } yield xs//.map(_ % y)
+    println(ns.run(rng))
   }
 }

@@ -1,5 +1,5 @@
-import purelyfunc.random.RNG
+import purelyfunc.random.{RNG, State}
 
 package object purelyfunc {
-  type Rand[+A] = RNG => (A, RNG)
+  type Rand[A] = State[RNG, A]
 }
